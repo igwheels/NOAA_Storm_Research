@@ -5,8 +5,9 @@ date: "`r Sys.Date()`"
 output: html_document
 ---
 
-```{r setup, include=FALSE}
+```{r setup, include=FALSE, warning=FALSE}
 knitr::opts_chunk$set(echo = TRUE, warning = FALSE, error = FALSE)
+options(scipen = 999, digits = 6)
 ```
 
 ## 
@@ -16,6 +17,8 @@ setwd("~/R for DS/StormResearch/")
 
 sessionInfo()
 
+library(tidyverse)
+library(ggplot2)
 library(httr)
 library(readr)
 
@@ -34,9 +37,63 @@ df <- read.csv(pipe(paste("bzcat", src)), header = TRUE)
 ```
 
 ```{r explore data}
-
-summary(df)
 head(df,10)
+summary(df)
+```
 
+```{r}
+# Analyze Event Types by Injury count
+injuries <- df %>%
+  group_by(EVTYPE) %>%
+  summarize(totalInjuries = sum(INJURIES, na.rm = TRUE)) %>% 
+        filter(totalInjuries > 50) %>%
+  arrange(desc(totalInjuries))
+
+# Display top 5 injurious events
+head(injuries, 5)
+
+# Create a bar plot showing injuries counts by events with more than 50 injuries
+ggplot(injuries, aes(x = reorder(EVTYPE, -totalInjuries), y = totalInjuries)) +
+  geom_bar(stat = "identity", fill = "cornflowerblue") +
+  labs(title = "Total Injuries by Event Type",
+       x = "Event Type",
+       y = "Total Injuries") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+# Calculate total injuries from severe weather events and total minus tornados.
+allInj <- sum(df$INJURIES)
+twisterInj <- df %>% 
+        filter(EVTYPE == "TORNADO") %>% 
+        summarize(twistInj = sum(INJURIES))
+allTornado <- twisterInj[1,1]
+allOthers <- allInj - allTornado
+```
+
+### The data in this plot are difficult to analyze because of the extremely high
+### number of tornado injuries as compared to injuries from other events.
+### Tornados accounted roughly two-thirds of all severe weather injuries throughout
+### the United States from 1950 to 2011. During this period, there were `r allInj`
+### total severe weather injuries, of which `r allTornado` were from tornados and
+### `r allOthers` were from other events.
+
+```{r plot without tornados}
+# Plot non-tornado injuries
+nonTornado <- df %>%
+  group_by(EVTYPE) %>%
+  summarize(totalInjuries = sum(INJURIES, na.rm = TRUE)) %>% 
+        filter(totalInjuries > 50,
+               EVTYPE != "TORNADO") %>%
+  arrange(desc(totalInjuries))
+
+# Create a bar plot showing injuries counts by non-Tornado events with more than 
+# 50 injuries
+ggplot(nonTornado, aes(x = reorder(EVTYPE, -totalInjuries), y = totalInjuries)) +
+  geom_bar(stat = "identity", fill = "cornflowerblue") +
+  labs(title = "Total Injuries by Event Type Excluding Tornados",
+       x = "Event Type",
+       y = "Total Injuries") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
 ```
 
