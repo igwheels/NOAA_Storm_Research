@@ -5,12 +5,32 @@ date: "`r Sys.Date()`"
 output: html_document
 ---
 
+## Abstract
+
+The following is a basic analysis of severe weather data from the U.S. National
+Oceanic and Atmospheric Administration's (NOAA) storm database. This database
+contains information from 1950 to 2011 related to the characteristics of major
+storms and weather events in the United States, including injuries, fatalities,
+and property damage. This analysis addresses the questions of which types of
+severe weather events are most harmful with respect to population health and
+which types of events have the greatest economic consequences. The researcher has
+selected property damage estimates and injuries as the metrics by which to measure
+economic impact and harm to population health respectively. 
+
+## Results
+
+The data indicate clearly that tornadoes are the most costly severe weather events
+in terms of personal injuries, while floods are the most costly in terms of
+estimated property damage.
+
+
 ```{r setup, include=FALSE, warning=FALSE}
 knitr::opts_chunk$set(echo = TRUE, warning = FALSE, error = FALSE)
+# Remove scientific notation from output.
 options(scipen = 999, digits = 6)
 ```
 
-## 
+## Data Processing
 
 ```{r load libraries and data}
 setwd("~/R for DS/StormResearch/")
@@ -36,12 +56,39 @@ df <- read.csv(pipe(paste("bzcat", src)), header = TRUE)
 
 ```
 
+## Explore Data
+
 ```{r explore data}
 head(df,10)
 summary(df)
 ```
+## Clean up formatting and filter data
 
-```{r}
+Because the earlier years represented in the database record fewer events
+and are less reliable due to inferior record-keeping, this analysis focuses
+on the 25 year period from 1986 to 2011.
+
+```{r munge property damage estimates}
+beg <- ymd("1986-01-01", tz = "America/Chicago")
+end <- ymd("2011-11-30", tz = "America/Chicago")
+
+# Convert BGD_DATE field from character to date; Create normalized property
+# damage field by using PROPDMG value multiplied by the PROPDMGEXP value. The
+# property damage is normalized to represent millions of dollars.
+df <- df %>% 
+        mutate(DMGCOSTNORM = case_when(
+                PROPDMGEXP == "M" ~ (PROPDMG * 1000000),
+                PROPDMGEXP == "B" ~ (PROPDMG * 1000000000),
+                PROPDMG > 0 ~ (PROPDMG * 1000)),
+               DMGCOSTNORM = ifelse(DMGCOSTNORM > 0, DMGCOSTNORM / 1000000,
+                                    DMGCOSTNORM),
+               BGN_DATE = mdy_hms(BGN_DATE, tz = "America/Chicago")) %>% 
+        filter(BGN_DATE >= beg, BGN_DATE <= end) %>% 
+        relocate(DMGCOSTNORM, .before = CROPDMG)
+```
+
+
+```{r injury analysis}
 # Analyze Event Types by Injury count
 injuries <- df %>%
   group_by(EVTYPE) %>%
@@ -61,7 +108,7 @@ ggplot(injuries, aes(x = reorder(EVTYPE, -totalInjuries), y = totalInjuries)) +
   theme_minimal() +
   theme(axis.text.x = element_text(angle = 45, hjust = 1))
 
-# Calculate total injuries from severe weather events and total minus tornados.
+# Calculate total injuries from severe weather events and total minus tornadoes.
 allInj <- sum(df$INJURIES)
 twisterInj <- df %>% 
         filter(EVTYPE == "TORNADO") %>% 
@@ -70,14 +117,14 @@ allTornado <- twisterInj[1,1]
 allOthers <- allInj - allTornado
 ```
 
-### The data in this plot are difficult to analyze because of the extremely high
-### number of tornado injuries as compared to injuries from other events.
-### Tornados accounted roughly two-thirds of all severe weather injuries throughout
-### the United States from 1950 to 2011. During this period, there were `r allInj`
-### total severe weather injuries, of which `r allTornado` were from tornados and
-### `r allOthers` were from other events.
+The data in this plot are difficult to analyze because of the extremely high
+number of tornado injuries as compared to injuries from other events.
+tornadoes accounted roughly three-fifths of all severe weather injuries throughout
+the United States from 1986 to 2011. During this period, there were `r allInj`
+total severe weather injuries, of which `r allTornado` were from tornadoes and
+`r allOthers` were from other events.
 
-```{r plot without tornados}
+```{r plot without tornadoes}
 # Plot non-tornado injuries
 nonTornado <- df %>%
   group_by(EVTYPE) %>%
@@ -90,9 +137,31 @@ nonTornado <- df %>%
 # 50 injuries
 ggplot(nonTornado, aes(x = reorder(EVTYPE, -totalInjuries), y = totalInjuries)) +
   geom_bar(stat = "identity", fill = "cornflowerblue") +
-  labs(title = "Total Injuries by Event Type Excluding Tornados",
+  labs(title = "Total Injuries by Event Type Excluding tornadoes",
        x = "Event Type",
        y = "Total Injuries") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+## Property Damage
+
+```{r property damage analysis}
+# Analyze Event Types by Injury count
+damage <- df %>%
+  group_by(EVTYPE) %>%
+  summarize(totalDamage = sum(DMGCOSTNORM, na.rm = TRUE)) %>% 
+        filter(totalDamage > 500) %>%
+  arrange(desc(totalDamage))
+
+# Display the 5 most costly events in terms of property damage estimates
+head(damage, 5)
+
+# Create a bar plot showing injuries counts by events with more than 50 injuries
+ggplot(damage, aes(x = reorder(EVTYPE, -totalDamage), y = totalDamage)) +
+  geom_bar(stat = "identity", fill = "cornflowerblue") +
+  labs(title = "Total Property Damage Estimate by Event Type",
+       x = "Event Type",
+       y = "Total Damage in Millions $") +
   theme_minimal() +
   theme(axis.text.x = element_text(angle = 45, hjust = 1))
 ```
